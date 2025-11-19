@@ -1,12 +1,17 @@
+// src/services/auth.service.ts
 import User, { IUser } from "../models/User.model";
-import bcrypt from "bcrypt";
-import jwt from "jsonwebtoken";
+import bcrypt from "bcryptjs";
+import * as jwt from "jsonwebtoken";
 import { Types } from "mongoose";
 
 const SALT_ROUNDS = Number(process.env.SALT_ROUNDS || 10);
-const JWT_SECRET = process.env.JWT_SECRET || "change_me";
+
+// keep secrets typed as jwt.Secret
+const JWT_SECRET = (process.env.JWT_SECRET || "change_me") as jwt.Secret;
 const JWT_EXPIRES = process.env.JWT_EXPIRES || "15m";
-const REFRESH_SECRET = process.env.REFRESH_TOKEN_SECRET || "change_refresh";
+
+const REFRESH_SECRET = (process.env.REFRESH_TOKEN_SECRET ||
+  "change_refresh") as jwt.Secret;
 const REFRESH_EXPIRES = process.env.REFRESH_TOKEN_EXPIRES || "7d";
 
 export async function hashPassword(plain: string) {
@@ -17,12 +22,17 @@ export async function comparePassword(plain: string, hashed: string) {
   return bcrypt.compare(plain, hashed);
 }
 
-export function signAccessToken(payload: object) {
-  return jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRES });
+export function signAccessToken(payload: Record<string, any>) {
+  // cast expiresIn to any to satisfy @types/jsonwebtoken's narrower type
+  const options: jwt.SignOptions = { expiresIn: JWT_EXPIRES as unknown as any };
+  return jwt.sign(payload, JWT_SECRET, options);
 }
 
-export function signRefreshToken(payload: object) {
-  return jwt.sign(payload, REFRESH_SECRET, { expiresIn: REFRESH_EXPIRES });
+export function signRefreshToken(payload: Record<string, any>) {
+  const options: jwt.SignOptions = {
+    expiresIn: REFRESH_EXPIRES as unknown as any,
+  };
+  return jwt.sign(payload, REFRESH_SECRET, options);
 }
 
 export async function saveRefreshToken(

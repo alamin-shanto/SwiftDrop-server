@@ -1,3 +1,4 @@
+// src/services/parcel.service.ts
 import Parcel, { IParcel } from "../models/Parcel.model";
 import { Types } from "mongoose";
 import generateTrackingId from "../utilities/generateTrackingId";
@@ -14,15 +15,24 @@ export interface CreateParcelDTO {
 
 export async function createParcel(dto: CreateParcelDTO) {
   const trackingId = generateTrackingId();
-  const statusLog = {
+
+  // convert string IDs to ObjectId (matches model)
+  const senderObjectId = new Types.ObjectId(dto.senderId);
+  const receiverObjectId = new Types.ObjectId(dto.receiverId);
+
+  // initial status log: include updatedBy as sender
+  const statusLog: any = {
     status: "Created",
     timestamp: new Date(),
     note: dto.note || "Parcel created",
+    // include updatedBy as ObjectId so model's IStatusLog (if required) accepts it.
+    updatedBy: senderObjectId,
   };
+
   const parcel = await Parcel.create({
     trackingId,
-    senderId: dto.senderId,
-    receiverId: dto.receiverId,
+    senderId: senderObjectId,
+    receiverId: receiverObjectId,
     origin: dto.origin,
     destination: dto.destination,
     weight: dto.weight,
@@ -30,6 +40,7 @@ export async function createParcel(dto: CreateParcelDTO) {
     status: "Created",
     statusLogs: [statusLog],
   } as Partial<IParcel>);
+
   return parcel;
 }
 
@@ -92,13 +103,22 @@ export async function updateParcelStatus(
 ) {
   const p = await getParcelById(parcelId);
   if (!p) return null;
+
   p.status = status;
-  p.statusLogs.push({
+
+  // build the status log object and only include updatedBy when provided
+  const log: any = {
     status,
     timestamp: new Date(),
-    updatedBy: updatedBy ? new Types.ObjectId(updatedBy) : undefined,
     note,
-  });
+  };
+  if (updatedBy) {
+    log.updatedBy = new Types.ObjectId(updatedBy);
+  }
+
+  // push typed object (casting to any/unknown to avoid exactOptionalPropertyTypes friction)
+  p.statusLogs.push(log as unknown as any);
+
   await p.save();
   return p;
 }
@@ -110,12 +130,17 @@ export async function cancelParcel(parcelId: string, userId?: string) {
     throw new Error("Cannot cancel parcel after dispatch");
   }
   p.status = "Cancelled";
-  p.statusLogs.push({
+
+  const log: any = {
     status: "Cancelled",
     timestamp: new Date(),
-    updatedBy: userId ? new Types.ObjectId(userId) : undefined,
     note: "Cancelled by user",
-  });
+  };
+  if (userId) {
+    log.updatedBy = new Types.ObjectId(userId);
+  }
+
+  p.statusLogs.push(log as unknown as any);
   await p.save();
   return p;
 }

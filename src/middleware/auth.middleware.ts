@@ -2,6 +2,8 @@
 import type { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
 import User from "../models/User.model";
+import type { IUser } from "../models/User.model";
+import { Types } from "mongoose";
 
 const JWT_SECRET = process.env.JWT_SECRET ?? "change_me";
 
@@ -50,9 +52,10 @@ export async function authenticate(
     }
 
     // confirm user exists and not blocked
-    const user = await User.findById(payload.id).select(
+    const user = (await User.findById(payload.id).select(
       "+isBlocked +role +email"
-    );
+    )) as IUser | null;
+
     if (!user) {
       return res
         .status(401)
@@ -64,9 +67,12 @@ export async function authenticate(
         .json({ status: "fail", message: "User is blocked" });
     }
 
+    // cast _id to ObjectId for TS so toString() is allowed
+    const objectId = user._id as unknown as Types.ObjectId;
+
     // attach typed user to request
     (req as any).user = {
-      id: user._id.toString(),
+      id: objectId.toString(),
       role: user.role,
       email: user.email,
     } as AuthedUser;

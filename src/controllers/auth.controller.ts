@@ -21,13 +21,17 @@ export async function register(req: Request, res: Response) {
 
     const user = await authService.createUser({ name, email, password, role });
     // create tokens
+    // normalize _id to a string (safe and explicit)
+    const userId = user._id?.toString?.() ?? String(user._id);
+
     const accessToken = authService.signAccessToken({
-      id: user._id,
+      id: userId,
       role: user.role,
     });
-    const refreshToken = authService.signRefreshToken({ id: user._id });
+    const refreshToken = authService.signRefreshToken({ id: userId });
 
-    await authService.saveRefreshToken(user._id, refreshToken);
+    // persist using string id
+    await authService.saveRefreshToken(userId, refreshToken);
 
     return res.status(201).json({
       status: "success",
@@ -64,13 +68,17 @@ export async function login(req: Request, res: Response) {
         .status(403)
         .json({ status: "fail", message: "User is blocked" });
 
+    // normalize _id to a string (safe and explicit)
+    const userId = user._id?.toString?.() ?? String(user._id);
+
     const accessToken = authService.signAccessToken({
-      id: user._id,
+      id: userId,
       role: user.role,
     });
-    const refreshToken = authService.signRefreshToken({ id: user._id });
+    const refreshToken = authService.signRefreshToken({ id: userId });
 
-    await authService.saveRefreshToken(user._id, refreshToken);
+    // persist using string id
+    await authService.saveRefreshToken(userId, refreshToken);
 
     return res.json({
       status: "success",
@@ -101,7 +109,14 @@ export async function refreshToken(req: Request, res: Response) {
         .json({ status: "fail", message: "Invalid refresh token" });
     }
 
-    const userId = payload.id;
+    // ensure payload.id is a string
+    const userId = payload?.id ? String(payload.id) : null;
+    if (!userId) {
+      return res
+        .status(401)
+        .json({ status: "fail", message: "Invalid refresh token payload" });
+    }
+
     const valid = await authService.verifyRefreshToken(userId, refreshToken);
     if (!valid)
       return res
@@ -114,13 +129,18 @@ export async function refreshToken(req: Request, res: Response) {
         .status(404)
         .json({ status: "fail", message: "User not found" });
 
-    // issue new tokens (rotate)
+    // produce new tokens using string id
     const newAccess = authService.signAccessToken({
-      id: user._id,
+      id: user._id?.toString?.() ?? String(user._id),
       role: user.role,
     });
-    const newRefresh = authService.signRefreshToken({ id: user._id });
-    await authService.saveRefreshToken(user._id, newRefresh);
+    const newRefresh = authService.signRefreshToken({
+      id: user._id?.toString?.() ?? String(user._id),
+    });
+    await authService.saveRefreshToken(
+      user._id?.toString?.() ?? String(user._id),
+      newRefresh
+    );
 
     return res.json({
       status: "success",
