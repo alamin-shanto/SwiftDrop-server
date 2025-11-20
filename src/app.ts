@@ -59,6 +59,17 @@ app.get("/health", (_req: Request, res: Response) => {
 });
 
 /**
+ * Root route for Render / browser checks
+ */
+app.get("/", (_req: Request, res: Response) => {
+  res.json({
+    status: "ok",
+    message: "SwiftDrop API is running",
+    uptime: process.uptime(),
+  });
+});
+
+/**
  * 404 handler
  */
 app.use((_req: Request, res: Response) => {
