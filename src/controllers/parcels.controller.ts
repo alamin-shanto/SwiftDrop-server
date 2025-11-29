@@ -169,3 +169,72 @@ export async function cancelParcelHandler(req: Request, res: Response) {
     });
   }
 }
+
+export async function getStats(req: Request, res: Response) {
+  try {
+    // If parcelService implements a dedicated stats method, prefer it
+    if (typeof (parcelService as any).getStats === "function") {
+      const stats = await (parcelService as any).getStats();
+      return res.json({ status: "success", data: stats });
+    }
+
+    // Fallback: list parcels (large limit) and compute simple stats here
+    const listResult = await parcelService.listParcels({
+      filters: {},
+      page: 1,
+      limit: 100000,
+      sort: { createdAt: -1 as any },
+    } as any);
+
+    // Normalize result safely for TS
+    const items: any[] = Array.isArray(listResult?.items)
+      ? listResult.items
+      : [];
+    const total: number =
+      typeof listResult?.total === "number" ? listResult.total : items.length;
+
+    const delivered = items.filter(
+      (p: any) => p?.status === "delivered"
+    ).length;
+    const inTransit = items.filter(
+      (p: any) => p?.status && p.status !== "delivered"
+    ).length;
+
+    // Build a simple monthly series (last 6 months) if createdAt exists
+    const monthlyMap: Record<string, number> = {};
+    const now = new Date();
+    for (let i = 0; i < 6; i++) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(
+        2,
+        "0"
+      )}`;
+      monthlyMap[key] = 0;
+    }
+
+    items.forEach((p: any) => {
+      if (!p?.createdAt) return;
+      const d = new Date(p.createdAt);
+      if (isNaN(d.getTime())) return;
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(
+        2,
+        "0"
+      )}`;
+      if (monthlyMap[key] !== undefined) {
+        monthlyMap[key] = monthlyMap[key]! + 1;
+      }
+    });
+
+    const monthly = Object.keys(monthlyMap)
+      .sort()
+      .map((k) => ({ month: k, count: monthlyMap[k] }));
+
+    return res.json({
+      status: "success",
+      data: { total, delivered, inTransit, monthly },
+    });
+  } catch (err) {
+    console.error("getStats failed:", err);
+    return res.status(500).json({ status: "error", message: "Server error" });
+  }
+}

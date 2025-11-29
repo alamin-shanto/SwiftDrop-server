@@ -5,6 +5,14 @@ import { allowRoles } from "../middleware/role.middleware";
 
 const router = Router();
 
+router.get(
+  "/stats",
+  parcelsController.getStats ??
+    ((req, res) => {
+      res.json({ total: 0, delivered: 0, inTransit: 0, monthly: [] });
+    })
+);
+
 /**
  * Public tracking by trackingId
  */
