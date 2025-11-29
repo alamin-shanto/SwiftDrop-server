@@ -31,7 +31,7 @@ const UserSchema = new Schema<IUser>(
     phone: String,
     address: String,
   },
-  { timestamps: true }
+  { timestamps: true, collection: "users" }
 );
 
 export default model<IUser>("User", UserSchema);

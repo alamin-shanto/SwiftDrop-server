@@ -42,7 +42,7 @@ const ParcelSchema = new Schema<IParcel>(
     statusLogs: { type: [StatusLogSchema], default: [] },
     isBlocked: { type: Boolean, default: false },
   },
-  { timestamps: true }
+  { timestamps: true, collection: "parcels" }
 );
 
 export default model<IParcel>("Parcel", ParcelSchema);
