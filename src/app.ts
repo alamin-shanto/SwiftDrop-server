@@ -18,6 +18,7 @@ const PORT = process.env.PORT ? Number(process.env.PORT) : 4000;
 const app = express();
 
 app.use((req, _res, next) => {
+  // helpful debug logging for incoming requests (origin + method + url)
   console.log(
     "Incoming Origin:",
     req.headers.origin,
@@ -30,7 +31,7 @@ app.use((req, _res, next) => {
 });
 
 /**
- * Allowed origins for CORS
+ * Allowed origins for CORS (no trailing slashes)
  */
 const allowedOrigins = [
   "http://localhost:5173",
@@ -38,37 +39,94 @@ const allowedOrigins = [
   "https://swiftdrop-client.netlify.app",
 ];
 
-const corsOptions = {
-  origin: (
-    origin: string | undefined,
-    callback: (err: Error | null, allow?: boolean | string) => void
-  ) => {
-    // allow non-browser requests (curl, Postman, server-to-server)
-    if (!origin) return callback(null, true);
+const defaultCorsMethods = [
+  "GET",
+  "HEAD",
+  "PUT",
+  "PATCH",
+  "POST",
+  "DELETE",
+  "OPTIONS",
+];
+const defaultAllowedHeaders = [
+  "Content-Type",
+  "Authorization",
+  "X-Requested-With",
+];
 
-    // normalize origin (strip trailing slash)
-    const normalized = origin.replace(/\/+$/, "");
+/**
+ * Utility: determine whether an incoming origin should be allowed.
+ * - Accepts exact allowedOrigins
+ * - Accepts any netlify.app hostname (handy for preview URLs)
+ * - Returns true for no-origin (curl/Postman / server-to-server)
+ */
+function isAllowedOrigin(originHeader?: string): boolean {
+  if (!originHeader) return true; // allow tools / non-browser clients
+  const normalized = originHeader.replace(/\/+$/, "");
+  if (allowedOrigins.includes(normalized)) return true;
 
-    if (allowedOrigins.includes(normalized)) {
-      // echo true to allow
-      return callback(null, true);
-    }
+  // Accept any subdomain under netlify.app (useful for preview deploys)
+  try {
+    const parsed = new URL(normalized);
+    if (parsed.hostname.endsWith("netlify.app")) return true;
+  } catch {
+    // ignore parse errors
+  }
 
-    console.warn("Blocked CORS origin:", origin);
-    // respond with an error so the cors middleware will reject this origin
-    return callback(new Error("CORS not allowed for origin " + origin));
-  },
-  credentials: true,
-  methods: ["GET", "HEAD", "PUT", "PATCH", "POST", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
-  optionsSuccessStatus: 204,
-};
+  return false;
+}
 
-// Apply security and CORS early
+/**
+ * Preflight (OPTIONS) handler — answer directly with CORS headers.
+ */
+app.use((req: Request, res: Response, next: NextFunction) => {
+  if (req.method !== "OPTIONS") return next();
+
+  const originHeader = (req.headers.origin || "") as string;
+  const normalized = originHeader.replace(/\/+$/, "");
+
+  console.log("CORS preflight from origin:", originHeader);
+
+  if (!isAllowedOrigin(originHeader)) {
+    console.warn("Blocked CORS preflight origin:", originHeader);
+    return res
+      .status(403)
+      .json({ error: `CORS not allowed for origin ${normalized}` });
+  }
+
+  // Allowed: reply with CORS headers and 204 No Content
+  res.setHeader("Access-Control-Allow-Origin", originHeader || "*");
+  res.setHeader("Access-Control-Allow-Methods", defaultCorsMethods.join(","));
+  res.setHeader(
+    "Access-Control-Allow-Headers",
+    defaultAllowedHeaders.join(",")
+  );
+  res.setHeader("Access-Control-Allow-Credentials", "true");
+  return res.sendStatus(204);
+});
+
+/**
+ * Apply helmet and cors middleware for normal requests (non-OPTIONS).
+ */
 app.use(helmet());
-// Ensure preflight OPTIONS are handled with the same cors options
-app.options("*", cors(corsOptions));
-app.use(cors(corsOptions));
+app.use(
+  cors({
+    origin: (
+      incomingOrigin: string | undefined,
+      callback: (err: Error | null, allow?: boolean) => void
+    ) => {
+      if (!incomingOrigin) return callback(null, true); // allow non-browser clients
+      if (isAllowedOrigin(incomingOrigin)) return callback(null, true);
+      console.warn("Blocked CORS origin (request):", incomingOrigin);
+      // Do not throw; just tell cors to disallow by passing false.
+      return callback(null, false);
+    },
+    credentials: true,
+    methods: defaultCorsMethods,
+    allowedHeaders: defaultAllowedHeaders,
+    optionsSuccessStatus: 204,
+  })
+);
 
 // Body parsers and logging
 app.use(express.json({ limit: "10mb" }));
