@@ -29,10 +29,13 @@ app.use((req, _res, next) => {
   next();
 });
 
-// Allowed origins for CORS
+/**
+ * Allowed origins for CORS
+ */
 const allowedOrigins = [
   "http://localhost:5173",
-  "https://swiftdrop-client.netlify.app/",
+  "http://localhost:3000",
+  "https://swiftdrop-client.netlify.app",
 ];
 
 const corsOptions = {
@@ -40,22 +43,34 @@ const corsOptions = {
     origin: string | undefined,
     callback: (err: Error | null, allow?: boolean | string) => void
   ) => {
-    // allow non-browser requests
+    // allow non-browser requests (curl, Postman, server-to-server)
     if (!origin) return callback(null, true);
-    if (allowedOrigins.includes(origin)) {
-      return callback(null, origin); // echo back the exact origin
+
+    // normalize origin (strip trailing slash)
+    const normalized = origin.replace(/\/+$/, "");
+
+    if (allowedOrigins.includes(normalized)) {
+      // echo true to allow
+      return callback(null, true);
     }
+
     console.warn("Blocked CORS origin:", origin);
+    // respond with an error so the cors middleware will reject this origin
     return callback(new Error("CORS not allowed for origin " + origin));
   },
   credentials: true,
   methods: ["GET", "HEAD", "PUT", "PATCH", "POST", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
+  optionsSuccessStatus: 204,
 };
 
-// Middlewares
+// Apply security and CORS early
 app.use(helmet());
+// Ensure preflight OPTIONS are handled with the same cors options
+app.options("*", cors(corsOptions));
 app.use(cors(corsOptions));
+
+// Body parsers and logging
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true }));
 app.use(morgan(process.env.NODE_ENV === "production" ? "combined" : "dev"));
@@ -124,7 +139,7 @@ app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
   const message =
     typeof err === "object" && err !== null && "message" in err
       ? String((err as { message?: unknown }).message)
-      : "Internal server error";
+      : String(err) || "Internal server error";
 
   console.error("Server error:", err);
   res.status(status).json({ error: message });
