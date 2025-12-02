@@ -1,3 +1,4 @@
+// src/routes/parcels.routes.ts
 import { Router } from "express";
 import * as parcelsController from "../controllers/parcels.controller";
 import { authenticate } from "../middleware/auth.middleware";
@@ -5,44 +6,54 @@ import { allowRoles } from "../middleware/role.middleware";
 
 const router = Router();
 
+// Stats (open endpoint or restrict in controller)
 router.get(
   "/stats",
   parcelsController.getStats ??
-    ((req, res) => {
-      res.json({ total: 0, delivered: 0, inTransit: 0, monthly: [] });
-    })
+    ((req, res) =>
+      res.json({ total: 0, delivered: 0, inTransit: 0, monthly: [] }))
 );
 
-/**
- * Public tracking by trackingId
- */
-router.get("/track/:trackingId", parcelsController.getParcelByTrackingHandler);
+// Public tracking by trackingId
+router.get(
+  "/track/:trackingId",
+  parcelsController.getParcelByTrackingHandler ??
+    ((req, res) => res.status(501).json({ error: "not implemented" }))
+);
 
-/**
- * Authenticated routes
- */
+// Authenticated parcel creation (sender)
 router.post(
   "/",
   authenticate,
   allowRoles("sender"),
-  parcelsController.createParcelHandler
+  parcelsController.createParcelHandler ??
+    ((req, res) => res.status(501).json({ error: "not implemented" }))
 );
-router.get("/", authenticate, parcelsController.listParcelsHandler); // role-filtering inside controller
 
-// update status by admin/delivery personnel
+// List parcels (auth inside controller will filter by role)
+router.get(
+  "/",
+  authenticate,
+  parcelsController.listParcelsHandler ??
+    ((req, res) => res.status(501).json({ error: "not implemented" }))
+);
+
+// Update parcel status (admin/delivery)
 router.put(
   "/:id/status",
   authenticate,
   allowRoles("admin", "delivery"),
-  parcelsController.updateStatusHandler
+  parcelsController.updateStatusHandler ??
+    ((req, res) => res.status(501).json({ error: "not implemented" }))
 );
 
-// cancel by sender before dispatch OR admin
+// Cancel parcel (sender/admin)
 router.put(
   "/:id/cancel",
   authenticate,
   allowRoles("sender", "admin"),
-  parcelsController.cancelParcelHandler
+  parcelsController.cancelParcelHandler ??
+    ((req, res) => res.status(501).json({ error: "not implemented" }))
 );
 
 export default router;
