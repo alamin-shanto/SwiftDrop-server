@@ -1,3 +1,4 @@
+// src/models/Parcel.model.ts
 import { Schema, model, Document, Types } from "mongoose";
 
 export interface IStatusLog {
@@ -38,7 +39,12 @@ const ParcelSchema = new Schema<IParcel>(
     destination: { type: String, required: true },
     weight: { type: Number },
     price: { type: Number },
-    status: { type: String, default: "Created", index: true },
+
+    status: {
+      type: String,
+      default: "pending",
+      index: true,
+    },
     statusLogs: { type: [StatusLogSchema], default: [] },
     isBlocked: { type: Boolean, default: false },
   },

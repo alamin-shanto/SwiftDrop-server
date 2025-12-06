@@ -38,7 +38,9 @@ router.get(
     ((req, res) => res.status(501).json({ error: "not implemented" }))
 );
 
-// Update parcel status (admin/delivery)
+// --- Status update routes (admin/delivery) ---
+
+// Support both PUT and PATCH: frontend can call either
 router.put(
   "/:id/status",
   authenticate,
@@ -47,8 +49,25 @@ router.put(
     ((req, res) => res.status(501).json({ error: "not implemented" }))
 );
 
-// Cancel parcel (sender/admin)
+router.patch(
+  "/:id/status",
+  authenticate,
+  allowRoles("admin", "delivery"),
+  parcelsController.updateStatusHandler ??
+    ((req, res) => res.status(501).json({ error: "not implemented" }))
+);
+
+// --- Cancel routes (sender/admin) ---
+
 router.put(
+  "/:id/cancel",
+  authenticate,
+  allowRoles("sender", "admin"),
+  parcelsController.cancelParcelHandler ??
+    ((req, res) => res.status(501).json({ error: "not implemented" }))
+);
+
+router.patch(
   "/:id/cancel",
   authenticate,
   allowRoles("sender", "admin"),

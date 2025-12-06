@@ -8,6 +8,17 @@ import {
   buildPaginationResult,
 } from "../utilities/pagination";
 
+// Canonical status values used in the system
+export const ALLOWED_STATUSES = [
+  "pending",
+  "collected",
+  "dispatched",
+  "in_transit",
+  "delivered",
+  "cancelled",
+] as const;
+export type ParcelStatus = (typeof ALLOWED_STATUSES)[number];
+
 /**
  * Create parcel handler.
  * Accepts receiverId as either a Mongo ObjectId or a shortId and resolves it.
@@ -96,13 +107,12 @@ export async function listParcelsHandler(req: Request, res: Response) {
   try {
     const { page, limit, sort } = parsePagination(req.query);
     const user = (req as any).user;
-    const filters: any = { ...req.query };
+    const filters: Record<string, unknown> = { ...req.query };
 
     // Role-based restriction
     if (user && user.role === "sender") filters.senderId = String(user.id);
     if (user && user.role === "receiver") filters.receiverId = String(user.id);
 
-    // listParcels now returns { data, total }
     const { data, total } = await parcelService.listParcels({
       filters,
       page,
@@ -134,15 +144,29 @@ export async function updateStatusHandler(req: Request, res: Response) {
         .status(400)
         .json({ status: "fail", message: "Missing parcel id" });
 
-    const { status, note } = req.body;
-    if (!status)
+    const rawStatus = req.body?.status;
+    if (!rawStatus)
       return res
         .status(400)
         .json({ status: "fail", message: "Missing status" });
 
+    const status = String(rawStatus) as ParcelStatus;
+
+    if (!ALLOWED_STATUSES.includes(status)) {
+      return res.status(400).json({
+        status: "fail",
+        message: `Invalid status. Allowed: ${ALLOWED_STATUSES.join(", ")}`,
+      });
+    }
+
+    const note =
+      typeof req.body?.note === "string" && req.body.note.trim().length
+        ? req.body.note.trim()
+        : undefined;
+
     const updated = await parcelService.updateParcelStatus(
       String(id),
-      String(status),
+      status,
       String(user.id),
       note
     );
@@ -150,6 +174,7 @@ export async function updateStatusHandler(req: Request, res: Response) {
       return res
         .status(404)
         .json({ status: "fail", message: "Parcel not found" });
+
     return res.json({ status: "success", data: updated });
   } catch (err: any) {
     console.error("updateStatusHandler error:", err);
@@ -212,7 +237,6 @@ export async function getStats(req: Request, res: Response) {
       sort: { createdAt: -1 as any },
     } as any);
 
-    // listParcels now returns { data, total }
     const items: any[] = Array.isArray(listResult?.data) ? listResult.data : [];
     const total: number =
       typeof listResult?.total === "number" ? listResult.total : items.length;
@@ -220,8 +244,11 @@ export async function getStats(req: Request, res: Response) {
     const delivered = items.filter(
       (p: any) => p?.status === "delivered"
     ).length;
+
+    // consider "in transit" as any active non-delivered, non-cancelled
     const inTransit = items.filter(
-      (p: any) => p?.status && p.status !== "delivered"
+      (p: any) =>
+        p?.status && p.status !== "delivered" && p.status !== "cancelled"
     ).length;
 
     const monthlyMap: Record<string, number> = {};

@@ -13,6 +13,15 @@ export interface CreateParcelDTO {
   note?: string;
 }
 
+// Canonical statuses: keep in sync with controllers
+export type ParcelStatus =
+  | "pending"
+  | "collected"
+  | "dispatched"
+  | "in_transit"
+  | "delivered"
+  | "cancelled";
+
 /**
  * Create a parcel with a unique trackingId.
  * - Try creating with generated trackingId.
@@ -25,8 +34,10 @@ export async function createParcel(dto: CreateParcelDTO) {
   const senderObjectId = new Types.ObjectId(dto.senderId);
   const receiverObjectId = new Types.ObjectId(dto.receiverId);
 
+  const initialStatus: ParcelStatus = "pending";
+
   const statusLog: any = {
-    status: "Created",
+    status: initialStatus,
     timestamp: new Date(),
     note: dto.note ?? "Parcel created",
     updatedBy: senderObjectId,
@@ -46,7 +57,7 @@ export async function createParcel(dto: CreateParcelDTO) {
         destination: dto.destination,
         weight: dto.weight,
         price: dto.price,
-        status: "Created",
+        status: initialStatus,
         statusLogs: [statusLog],
       } as Partial<IParcel>);
 
@@ -169,13 +180,13 @@ export async function listParcels({
     Parcel.countDocuments(q).exec(),
   ]);
 
-  // IMPORTANT: front-end expects { data, total }
+  // front-end expects { data, total }
   return { data: items, total };
 }
 
 export async function updateParcelStatus(
   parcelId: string,
-  status: string,
+  status: ParcelStatus,
   updatedBy?: string,
   note?: string
 ) {
@@ -203,15 +214,21 @@ export async function cancelParcel(parcelId: string, userId?: string) {
   const p = await getParcelById(parcelId);
   if (!p) return null;
 
-  // You can align these with your exact status strings later if needed
-  if (["Dispatched", "InTransit", "Delivered"].includes((p as any).status)) {
+  // Disallow cancel once it is effectively already moving/finished
+  const nonCancelableStatuses: ParcelStatus[] = [
+    "dispatched",
+    "in_transit",
+    "delivered",
+  ];
+
+  if (nonCancelableStatuses.includes((p as any).status)) {
     throw new Error("Cannot cancel parcel after dispatch");
   }
 
-  (p as any).status = "Cancelled";
+  (p as any).status = "cancelled";
 
   const log: any = {
-    status: "Cancelled",
+    status: "cancelled",
     timestamp: new Date(),
     note: "Cancelled by user",
   };
